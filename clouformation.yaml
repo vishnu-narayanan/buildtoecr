@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Service and TaskDefinition Line App
+Resources:
+  ScalableTargetRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: 'application-autoscaling.amazonaws.com'
+          Action: 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+      - PolicyName: ecs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'ecs:DescribeServices'
+            - 'ecs:UpdateService'
+            Resource: '*'
+      - PolicyName: cloudwatch
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'cloudwatch:DescribeAlarms'
+            Resource: '*'
+
+  TaskDefinitionNginx:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      Family: nginx
+      ContainerDefinitions:
+        - Name: nginx
+          Essential: true
+          Image: ECR_REPO:TAG
+          Cpu: ECS_CPU
+          Memory: ECS_MEMORY
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: TAGNAME-nginx
+              awslogs-region:
+                Ref: AWS::Region
+              awslogs-stream-prefix: nginx
+          PortMappings:
+            - ContainerPort: 3000
+              HostPort: 0
+
+  ServiceDefinitionNginx:
+    Type: "AWS::ECS::Service"
+    Properties:
+      Cluster: TAGNAME-cluster-nginx
+      ServiceName: TAGNAME-cluster-nginx-service
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: MIN_TASK
+      LoadBalancers:
+        - ContainerName: nginx
+          ContainerPort: 3000
+          TargetGroupArn:
+            Fn::ImportValue: "TAGNAME-TargetGroupNginx"
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/ecsServiceRole
+      TaskDefinition: !Ref TaskDefinitionNginx
+
+  ScalableTargetNginx:
+    Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
+    Properties:
+      MaxCapacity: MAX_TASK
+      MinCapacity: MIN_TASK
+      ResourceId: !Sub
+        - service/TAGNAME-cluster-nginx/${Service}
+        - Service: !GetAtt ServiceDefinitionNginx.Name
+      RoleARN: !GetAtt 'ScalableTargetRole.Arn'
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ServiceNamespace: ecs
+
+  ScaleUpPolicyCPU:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: TAGNAME-nginx-scale-up-cpu
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTargetNginx
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 300
+        MinAdjustmentMagnitude: 1
+        StepAdjustments:
+        - MetricIntervalLowerBound: 0
+          ScalingAdjustment: 25
+
+  CPUUtilizationHighAlarmNginx:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Service is running out of CPU'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+      - Name: ClusterName
+        Value: TAGNAME-cluster-nginx
+      - Name: ServiceName
+        Value: !GetAtt 'ServiceDefinitionNginx.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: GreaterThanThreshold
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 50
+      AlarmActions:
+      - !Ref ScaleUpPolicyCPU
+      - SNSTOPICARNSLACK
+      OKActions:
+      - SNSTOPICARNSLACK
+
+
+  ScaleUpPolicyMemory:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: TAGNAME-nginx-scale-up-memory'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTargetNginx
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 300
+        MinAdjustmentMagnitude: 1
+        StepAdjustments:
+        - MetricIntervalLowerBound: 0
+          ScalingAdjustment: 25
+
+  MemoryUtilizationHighAlarmNginx:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: 'Service is running out of memory'
+      Namespace: AWS/ECS
+      Dimensions:
+      - Name: ClusterName
+        Value: TAGNAME-cluster-nginx
+      - Name: ServiceName
+        Value: !GetAtt 'ServiceDefinitionNginx.Name'
+      MetricName: MemoryUtilization
+      ComparisonOperator: GreaterThanThreshold
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: '1'
+      Threshold: 70
+      AlarmActions:
+      - !Ref 'ScaleUpPolicyMemory'
+      - SNSTOPICARNSLACK
+      OKActions:
+      - SNSTOPICARNSLACK
+
+Outputs:
+  ServiceDefinitionNginx:
+    Description: 'ServiceDefinitionNginx'
+    Value: !GetAtt ServiceDefinitionNginx.Name
+    Export:
+Name: !Sub '${AWS::StackName}-ServiceDefinitionNginx'
