@@ -49,7 +49,7 @@ Resources:
                 Ref: AWS::Region
               awslogs-stream-prefix: nginx
           PortMappings:
-            - ContainerPort: 3000
+            - ContainerPort: 80
               HostPort: 0
 
   ServiceDefinitionNginx:
@@ -63,7 +63,7 @@ Resources:
       DesiredCount: MIN_TASK
       LoadBalancers:
         - ContainerName: nginx
-          ContainerPort: 3000
+          ContainerPort: 80
           TargetGroupArn:
             Fn::ImportValue: "TAGNAME-TargetGroupNginx"
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/ecsServiceRole
