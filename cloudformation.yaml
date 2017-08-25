@@ -159,4 +159,4 @@ Outputs:
     Description: 'ServiceDefinitionNginx'
     Value: !GetAtt ServiceDefinitionNginx.Name
     Export:
-	Name: !Sub '${AWS::StackName}-ServiceDefinitionNginx'
+      Name: !Sub '${AWS::StackName}-ServiceDefinitionNginx'
