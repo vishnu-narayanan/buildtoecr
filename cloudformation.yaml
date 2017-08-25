@@ -121,7 +121,7 @@ Resources:
   ScaleUpPolicyMemory:
     Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
     Properties:
-      PolicyName: TAGNAME-nginx-scale-up-memory'
+      PolicyName: TAGNAME-nginx-scale-up-memory
       PolicyType: StepScaling
       ScalingTargetId: !Ref ScalableTargetNginx
       StepScalingPolicyConfiguration:
